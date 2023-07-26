@@ -120,7 +120,9 @@ def write_samediff_words(fa_fn, output_fn, min_frames=50, min_chars=5):
                 )
 
 
-def segments_from_npz(input_npz_fn, segments_fn, output_npz_fn):
+def segments_from_npz(
+    input_npz_fn, segments_fn, output_npz_fn, 
+    vq_npz_fn=None, output_vq_npz_fn=None, index_factor:float=1.):
     """
     Cut segments from a NumPy archive and save in a new archive.
 
@@ -130,6 +132,9 @@ def segments_from_npz(input_npz_fn, segments_fn, output_npz_fn):
     # Read the .npz file
     print("Reading npz:", input_npz_fn)
     input_npz = np.load(input_npz_fn)
+    use_vq = vq_npz_fn is not None
+    if use_vq:
+        input_vq_npz = np.load(vq_npz_fn)
 
     # Create input npz segments dict
     utterance_segs = {}  # utterance_segs["s08_02b_029657-029952"]
@@ -153,6 +158,7 @@ def segments_from_npz(input_npz_fn, segments_fn, output_npz_fn):
 
     print("Extracting segments:")
     output_npz = {}
+    output_vq_npz = {}
     n_target_segs = 0
     for target_seg_key in tqdm(sorted(target_segs)):
         utterance, target_start, target_end = target_segs[target_seg_key]
@@ -161,9 +167,13 @@ def segments_from_npz(input_npz_fn, segments_fn, output_npz_fn):
             utterannce_start, utterance_end = utterance_segs[utterance_key]
             if (target_start >= utterannce_start and target_start <=
                     utterance_end):
-                start = target_start - utterannce_start
-                end = target_end - utterannce_start
+                start = int(round(index_factor * (target_start - utterannce_start)))
+                end = int(round(index_factor * (target_end - utterannce_start)))
                 output_npz[target_seg_key] = input_npz[
+                    utterance_key
+                    ][start:end]
+                if use_vq:
+                    output_vq_npz[target_seg_key] = input_vq_npz[
                     utterance_key
                     ][start:end]
                 n_target_segs += 1
@@ -175,6 +185,8 @@ def segments_from_npz(input_npz_fn, segments_fn, output_npz_fn):
         )
     print("Writing:", output_npz_fn)
     np.savez(output_npz_fn, **output_npz)
+    if use_vq:
+        np.savez(output_vq_npz_fn, **output_vq_npz)
 
 
 def strip_nonvad(utt, start, end, vads):
@@ -396,3 +408,17 @@ def pairs_for_speakers(speakers_fn, input_pairs_fn, output_pairs_fn):
     
     print("Wrote", n_pairs, "out of", n_total, "pairs")
 
+
+def get_postprocessor(feat_type):
+    if len(feat_type.split('_')) == 1:
+        return lambda x: x
+    
+    proc_type = feat_type.split('_')[-1]
+    
+    if proc_type == 'mean':
+        return lambda x: x.mean(1)
+    elif proc_type.isnumeric():
+        layer_id = int(proc_type)
+        return lambda x: x[:, layer_id]
+    else:
+        raise NotImplementedError

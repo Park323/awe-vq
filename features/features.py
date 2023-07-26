@@ -13,6 +13,9 @@ import librosa
 import numpy as np
 import scipy.io.wavfile as wav
 
+from torch import tensor
+from features.selfsup import Wav2VecExtractor, HuBERTExtractor
+
 
 def extract_fbank_dir(dir):
     """
@@ -82,6 +85,117 @@ def extract_mfcc_dir(dir):
         # plt.imshow(feat_dict[key][2000:2200,:])
         # plt.show()
         # assert False
+    return feat_dict
+
+
+def extract_w2v_dir(dir, vad_dict=None, postprocess=None, **opts):
+    """
+    Extract Wav2vec2.0 feature for all audio files in `dir` and return a dictionary.
+
+    Each dictionary key will be the filename of the associated audio file
+    without the extension. Variable-lengthed wav2vec features are extracted.
+    
+    [Options]
+    model_scale
+    model_layer
+    model_device
+    postprocess
+    """
+    wav2vec = Wav2VecExtractor(model_scale='large', device='cuda')
+    wav2vec.eval()
+    feat_dict = {}
+    vq_dict = {}
+    for wav_fn in tqdm(sorted(glob.glob(path.join(dir, '*.wav')))):
+        signal, sample_rate = librosa.core.load(wav_fn, sr=None)
+        if vad_dict:
+            if 'xitsonga' in dir:
+                nchlt, tso, sid, uid = path.basename(wav_fn)[:-4].split('_')
+                utt_key = f"{sid}_{nchlt}-{tso}-{uid}"
+            else:
+                wav_nm = wav_fn.split('/')[-1][:-4]
+                utt_key = f"{wav_nm[:3]}_{wav_nm[-3:]}"
+            if utt_key not in vad_dict:
+                print('Warning: missing VAD for utterance', utt_key)
+            else:
+                for start, end in vad_dict[utt_key]:
+                    start_ = int(round(start * sample_rate))
+                    end_ = int(round(end * sample_rate)) + 1
+                    segment = signal[start_:end_]
+                    if segment.shape[0] < 10:
+                        import pdb; pdb.set_trace()
+                    segment = tensor(segment).unsqueeze(0)
+                    feature, vq_idx = wav2vec.extract(inputs=segment, sr=sample_rate)
+                    if postprocess is not None:
+                        feature = postprocess(feature)
+                    sid = int(round(start * 100))
+                    eid = int(round(end * 100)) + 1
+                    segment_key = utt_key + '_{:06d}-{:06d}'.format(sid, eid)
+                    feat_dict[segment_key] = feature.cpu().detach().numpy()
+                    vq_dict[segment_key] = vq_idx.cpu().detach().numpy()
+        else:
+            signal = tensor(signal).unsqueeze(0)
+            feature, vq_idx = wav2vec.extract(inputs=signal, sr=sample_rate)
+            if postprocess is not None:
+                feature = postprocess(feature)
+            key = path.splitext(path.split(wav_fn)[-1])[0]
+            feat_dict[key] = feature.cpu().detach().numpy()
+            vq_dict[key] = vq_idx.cpu().detach().numpy()
+    
+    print('Total', len(feat_dict), 'features are extracted.')
+    
+    return (feat_dict, vq_dict)
+
+
+def extract_hb_dir(dir, vad_dict=None, postprocess=None, **opts):
+    """
+    Extract HuBERT feature for all audio files in `dir` and return a dictionary.
+
+    Each dictionary key will be the filename of the associated audio file
+    without the extension. Variable-lengthed HuBERT features are extracted.
+    
+    [Options]
+    model_scale
+    model_layer
+    model_device
+    postprocess
+    """
+    hubert = HuBERTExtractor(model_scale='large', device='cpu')
+    hubert.eval()
+    feat_dict = {}
+    vq_dict = {}
+    for wav_fn in tqdm(sorted(glob.glob(path.join(dir, '*.wav')))):
+        signal, sample_rate = librosa.core.load(wav_fn, sr=None)
+        if vad_dict:
+            if 'xitsonga' in dir:
+                nchlt, tso, sid, uid = path.basename(wav_fn)[:-4].split('_')
+                utt_key = f"{sid}_{nchlt}-{tso}-{uid}"
+            else:
+                wav_nm = wav_fn.split('/')[-1][:-4]
+                utt_key = f"{wav_nm[:3]}_{wav_nm[-3:]}"
+            if utt_key not in vad_dict:
+                print('Warning: missing VAD for utterance', utt_key)
+            else:
+                for start, end in vad_dict[utt_key]:
+                    start_ = int(round(start * sample_rate))
+                    end_ = int(round(end * sample_rate)) + 1
+                    segment = signal[start_:end_]
+                    segment = tensor(segment).unsqueeze(0)
+                    feature = hubert.extract(inputs=segment, sr=sample_rate)
+                    if postprocess is not None:
+                        feature = postprocess(feature)
+                    sid = int(round(start * 100))
+                    eid = int(round(end * 100)) + 1
+                    segment_key = utt_key + '_{:06d}-{:06d}'.format(sid, eid)
+                    feat_dict[segment_key] = feature.cpu().detach().numpy()
+        else:
+            signal = tensor(signal).unsqueeze(0)
+            feature = hubert.extract(inputs=signal, sr=sample_rate)
+            if postprocess is not None:
+                feature = postprocess(feature)
+            key = path.splitext(path.split(wav_fn)[-1])[0]
+            feat_dict[key] = feature.cpu().detach().numpy()
+
+    print('Total', len(feat_dict), 'features are extracted.')
     return feat_dict
 
 
