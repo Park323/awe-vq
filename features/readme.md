@@ -3,10 +3,17 @@ Feature Extraction
 
 Overview
 --------
-To extract MFCC and filterbank features, run:
+To extract MFCC or filterbank features, run:
 
-    ./extract_features_buckeye.py
-    ./extract_features_xitsonga.py
+    FEATURE_TYPE=mfcc
+    ./extract_features_buckeye.py --feature ${FEATURE_TYPE}
+    ./extract_features_xitsonga.py --feature ${FEATURE_TYPE}
+
+To extract self-supervised features, run:
+
+    FEATURE_TYPE=w2v_23 # 23th layer of wav2vec2.0
+    ./extract_ssl_features_buckeye.py --feature ${FEATURE_TYPE}
+    ./extract_ssl_features_xitsonga.py --feature ${FEATURE_TYPE}
 
 The rest of this document describes some of the feature sets and file formats.
 

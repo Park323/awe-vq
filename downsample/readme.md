@@ -31,9 +31,18 @@ Perform downsampling on MFCCs without deltas:
     # Xitsonga
     n_samples=10
     mkdir -p exp/xitsonga
-    ./downsample.py --technique resample --frame_dims 13 \
+    ./downsample.py --reduce_dims first-k --technique resample --frame_dims 13 \
         ../features/mfcc/xitsonga/xitsonga.samediff.dd.npz \
         exp/xitsonga/samediff.mfcc.downsample_${n_samples}.npz \
+        ${n_samples}
+
+    # To activate VQ files
+    n_samples=10
+    mkdir -p exp/xitsonga
+    ./downsample.py --reduce_dims first-k --technique resample --frame_dims 13 \
+        --vq_npz_fn ../features/w2v_11/xitsonga/xitsonga.samediff.dd.npz.vq.npz \
+        ../features/w2v_11/xitsonga/xitsonga.samediff.dd.npz \
+        exp/xitsonga/samediff.w2v_11.downsample_${n_samples}.npz \
         ${n_samples}
 
 
