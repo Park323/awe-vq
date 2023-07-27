@@ -14,18 +14,22 @@ import numpy as np
 import scipy.io.wavfile as wav
 
 from torch import tensor
-from features.selfsup import Wav2VecExtractor, HuBERTExtractor
+from selfsup import Wav2VecExtractor, HuBERTExtractor
 
 
-def extract_fbank_dir(dir):
+def extract_fbank_dir(dir=None, paths=None):
     """
     Extract filterbanks for all audio files in `dir` and return a dictionary.
 
     Each dictionary key will be the filename of the associated audio file
     without the extension. Mel-scale log filterbanks are extracted.
     """
+    assert paths is not None or dir is not None
+    if paths is None: 
+        paths = sorted(glob.glob(path.join(dir, '*.wav')))
+    
     feat_dict = {}
-    for wav_fn in tqdm(sorted(glob.glob(path.join(dir, "*.wav")))):
+    for wav_fn in tqdm(paths):
         signal, sample_rate = librosa.core.load(wav_fn, sr=None)
         signal = preemphasis(signal, coeff=0.97)
         fbank = np.log(librosa.feature.melspectrogram(
@@ -45,15 +49,19 @@ def extract_fbank_dir(dir):
     return feat_dict
 
 
-def extract_mfcc_dir(dir):
+def extract_mfcc_dir(dir=None, paths=None):
     """
     Extract MFCCs for all audio files in `dir` and return a dictionary.
 
     Each dictionary key will be the filename of the associated audio file
     without the extension. Deltas and double deltas are also extracted.
     """
+    assert paths is not None or dir is not None
+    if paths is None: 
+        paths = sorted(glob.glob(path.join(dir, '*.wav')))
+    
     feat_dict = {}
-    for wav_fn in tqdm(sorted(glob.glob(path.join(dir, "*.wav")))):
+    for wav_fn in tqdm(paths):
         signal, sample_rate = librosa.core.load(wav_fn, sr=None)
         signal = preemphasis(signal, coeff=0.97)
         mfcc = librosa.feature.mfcc(
@@ -88,7 +96,9 @@ def extract_mfcc_dir(dir):
     return feat_dict
 
 
-def extract_w2v_dir(dir, vad_dict=None, postprocess=None, **opts):
+def extract_w2v_dir(
+    dir=None, paths=None, vad_dict=None, postprocess=None, 
+    key_generator=None, device='cpu'):
     """
     Extract Wav2vec2.0 feature for all audio files in `dir` and return a dictionary.
 
@@ -101,19 +111,18 @@ def extract_w2v_dir(dir, vad_dict=None, postprocess=None, **opts):
     model_device
     postprocess
     """
-    wav2vec = Wav2VecExtractor(model_scale='large', device='cuda')
+    assert paths is not None or dir is not None
+    if paths is None: 
+        paths = sorted(glob.glob(path.join(dir, '*.wav')))
+    
+    wav2vec = Wav2VecExtractor(model_scale='large', device=device)
     wav2vec.eval()
     feat_dict = {}
     vq_dict = {}
-    for wav_fn in tqdm(sorted(glob.glob(path.join(dir, '*.wav')))):
+    for wav_fn in tqdm(paths):
         signal, sample_rate = librosa.core.load(wav_fn, sr=None)
         if vad_dict:
-            if 'xitsonga' in dir:
-                nchlt, tso, sid, uid = path.basename(wav_fn)[:-4].split('_')
-                utt_key = f"{sid}_{nchlt}-{tso}-{uid}"
-            else:
-                wav_nm = wav_fn.split('/')[-1][:-4]
-                utt_key = f"{wav_nm[:3]}_{wav_nm[-3:]}"
+            utt_key = key_generator(wav_fn)
             if utt_key not in vad_dict:
                 print('Warning: missing VAD for utterance', utt_key)
             else:
@@ -137,7 +146,10 @@ def extract_w2v_dir(dir, vad_dict=None, postprocess=None, **opts):
             feature, vq_idx = wav2vec.extract(inputs=signal, sr=sample_rate)
             if postprocess is not None:
                 feature = postprocess(feature)
-            key = path.splitext(path.split(wav_fn)[-1])[0]
+            if key_generator:
+                key = key_generator(wav_fn)
+            else:
+                key = path.splitext(path.split(wav_fn)[-1])[0]
             feat_dict[key] = feature.cpu().detach().numpy()
             vq_dict[key] = vq_idx.cpu().detach().numpy()
     
@@ -146,32 +158,27 @@ def extract_w2v_dir(dir, vad_dict=None, postprocess=None, **opts):
     return (feat_dict, vq_dict)
 
 
-def extract_hb_dir(dir, vad_dict=None, postprocess=None, **opts):
+def extract_hb_dir(
+    dir=None, paths=None, vad_dict=None, postprocess=None, 
+    key_generator=None, device='cpu'):
     """
     Extract HuBERT feature for all audio files in `dir` and return a dictionary.
 
     Each dictionary key will be the filename of the associated audio file
     without the extension. Variable-lengthed HuBERT features are extracted.
-    
-    [Options]
-    model_scale
-    model_layer
-    model_device
-    postprocess
     """
-    hubert = HuBERTExtractor(model_scale='large', device='cpu')
+    assert paths is not None or dir is not None
+    if paths is None: 
+        paths = sorted(glob.glob(path.join(dir, '*.wav')))
+    
+    hubert = HuBERTExtractor(model_scale='large', device=device)
     hubert.eval()
     feat_dict = {}
     vq_dict = {}
-    for wav_fn in tqdm(sorted(glob.glob(path.join(dir, '*.wav')))):
+    for wav_fn in tqdm(paths):
         signal, sample_rate = librosa.core.load(wav_fn, sr=None)
         if vad_dict:
-            if 'xitsonga' in dir:
-                nchlt, tso, sid, uid = path.basename(wav_fn)[:-4].split('_')
-                utt_key = f"{sid}_{nchlt}-{tso}-{uid}"
-            else:
-                wav_nm = wav_fn.split('/')[-1][:-4]
-                utt_key = f"{wav_nm[:3]}_{wav_nm[-3:]}"
+            utt_key = key_generator(wav_fn)
             if utt_key not in vad_dict:
                 print('Warning: missing VAD for utterance', utt_key)
             else:
@@ -192,7 +199,10 @@ def extract_hb_dir(dir, vad_dict=None, postprocess=None, **opts):
             feature = hubert.extract(inputs=signal, sr=sample_rate)
             if postprocess is not None:
                 feature = postprocess(feature)
-            key = path.splitext(path.split(wav_fn)[-1])[0]
+            if key_generator:
+                key = key_generator(wav_fn)
+            else:
+                key = path.splitext(path.split(wav_fn)[-1])[0]
             feat_dict[key] = feature.cpu().detach().numpy()
 
     print('Total', len(feat_dict), 'features are extracted.')
@@ -215,6 +225,8 @@ def extract_vad(feat_dict, vad_dict):
         for (start, end) in vad_dict[utt_key]:
             segment_key = utt_key + "_{:06d}-{:06d}".format(start, end)
             output_dict[segment_key] = feat_dict[utt_key][start:end, :]
+            assert output_dict[segment_key].shape[0] != 0, \
+                f"Feature from {utt_key} has a zero length!"
     return output_dict
 
 

@@ -16,19 +16,24 @@ def uttlabel_to_uttkey(utterance):
         utt_split = utterance.split("_")
         speaker = utt_split.pop(2)
         utt_key = speaker + "_" + "-".join(utt_split)
+    elif utterance.startswith("sc"):
+        # SpeechCommands V2
+        utt_key = "0" + "_" + utterance.replace("_","-") # No discriminative speaker.
     else:
         # Buckeye
         utt_key = utterance[0:3] + "_" + utterance[3:]
     return utt_key
 
 
-def read_vad_from_fa(fa_fn, frame_indices=True):
+def read_vad_from_fa(
+    fa_fn, samplerate:int=16000, scale_factor:int=160, frame_indices:bool=True):
     """
     Read voice activity detected (VAD) regions from a forced alignment file.
 
     The dictionary has utterance labels as keys and as values the speech
     regions as lists of tuples of (start, end) frame, with the end excluded.
     """
+    time2frame = samplerate / scale_factor
     vad_dict = {}
     prev_utterance = ""
     prev_token_label = ""
@@ -54,8 +59,8 @@ def read_vad_from_fa(fa_fn, frame_indices=True):
                     # utt_key = prev_utterance[0:3] + "_" + prev_utterance[3:]
                     if frame_indices:
                         # Convert time to frames
-                        start = int(round(start_time * 100))
-                        end = int(round(prev_end_time * 100)) + 1
+                        start = int(round(start_time * time2frame))
+                        end = int(round(prev_end_time * time2frame)) + 1
                         vad_dict[utt_key].append((start, end))
                     else:
                         vad_dict[utt_key].append(
@@ -71,21 +76,25 @@ def read_vad_from_fa(fa_fn, frame_indices=True):
         # utt_key = prev_utterance[0:3] + "_" + prev_utterance[3:]
         if frame_indices:
             # Convert time to frames
-            start = int(round(start_time * 100))
-            end = int(round(prev_end_time * 100)) + 1  # end index excluded
+            start = int(round(start_time * time2frame))
+            end = int(round(prev_end_time * time2frame)) + 1  # end index excluded
             vad_dict[utt_key].append((start, end))
         else:
             vad_dict[utt_key].append((start_time, prev_end_time))        
     return vad_dict
 
 
-def write_samediff_words(fa_fn, output_fn, min_frames=50, min_chars=5):
+def write_samediff_words(
+    fa_fn, output_fn, min_frames=50, min_chars=5,
+    samplerate:int=16000, scale_factor:int=160):
     """
     Find words of at least `min_frames` frames and `min_chars` characters.
 
     Ground truth words are extracted from the forced alignment file `fa_fn` and
     written to the word list file `output_fn`.
     """
+    time2frame = samplerate / scale_factor
+    
     print("Reading:", fa_fn)
     words = []
     with open(fa_fn, "r") as f:
@@ -101,8 +110,8 @@ def write_samediff_words(fa_fn, output_fn, min_frames=50, min_chars=5):
     print("Finding same-different word tokens")
     words_50fr5ch = []
     for utterance, label, (start, end) in words:
-        start_frame = int(round(float(start) * 100))
-        end_frame = int(round(float(end) * 100))
+        start_frame = int(round(float(start) * time2frame))
+        end_frame = int(round(float(end) * time2frame))
         if end_frame - start_frame >= min_frames and len(label) >= min_chars:
             words_50fr5ch.append((utterance, label, (start_frame, end_frame)))
     print("No. tokens:", len(words_50fr5ch), "out of", len(words))
@@ -122,7 +131,7 @@ def write_samediff_words(fa_fn, output_fn, min_frames=50, min_chars=5):
 
 def segments_from_npz(
     input_npz_fn, segments_fn, output_npz_fn, 
-    vq_npz_fn=None, output_vq_npz_fn=None, index_factor:float=1.):
+    vq_npz_fn=None, output_vq_npz_fn=None):
     """
     Cut segments from a NumPy archive and save in a new archive.
 
@@ -167,8 +176,8 @@ def segments_from_npz(
             utterannce_start, utterance_end = utterance_segs[utterance_key]
             if (target_start >= utterannce_start and target_start <=
                     utterance_end):
-                start = int(round(index_factor * (target_start - utterannce_start)))
-                end = int(round(index_factor * (target_end - utterannce_start)))
+                start = target_start - utterannce_start
+                end = target_end - utterannce_start
                 output_npz[target_seg_key] = input_npz[
                     utterance_key
                     ][start:end]
@@ -422,3 +431,13 @@ def get_postprocessor(feat_type):
         return lambda x: x[:, layer_id]
     else:
         raise NotImplementedError
+    
+    
+def parse_args():
+    import argparse
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--feature", default='w2v_mean')
+    parser.add_argument("--save-dir", default='./outputs')
+    parser.add_argument("--device", default='cpu', help='Device for SSL model forwarding')
+    args = parser.parse_args()
+    return args
