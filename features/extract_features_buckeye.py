@@ -76,21 +76,23 @@ def extract_features_for_subset(subset, feat_type, output_fn):
     np.savez_compressed(output_fn, **feat_dict)
 
 
-def main():
+def main(args):
 
     print(datetime.now())
 
     # RAW FEATURES
 
     # Extract MFCCs for the different sets
-    mfcc_dir = path.join("mfcc", "buckeye")
+    feature_dir = path.join(args.save_dir, args.feature, "xitsonga")
+    if not path.isdir(feature_dir):
+        os.makedirs(feature_dir)
     for subset in ["devpart1", "devpart2", "zs"]:
-        if not path.isdir(mfcc_dir):
-            os.makedirs(mfcc_dir)
-        output_fn = path.join(mfcc_dir, subset + ".dd.npz")
+        if not path.isdir(feature_dir):
+            os.makedirs(feature_dir)
+        output_fn = path.join(feature_dir, subset + ".dd.npz")
         if not path.isfile(output_fn):
-            print("Extracting MFCCs:", subset)
-            extract_features_for_subset(subset, "mfcc", output_fn)
+            print(f"Extracting {args.feature}:", subset)
+            extract_features_for_subset(subset, args.feature, output_fn)
         else:
             print("Using existing file:", output_fn)
 
@@ -257,4 +259,7 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    
+    args = utils.parse_args()
+    
+    main(args)
