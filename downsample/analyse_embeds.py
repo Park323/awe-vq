@@ -138,7 +138,7 @@ def plot_embeds_2d(embeds_dict, types=None):
 
     print("Computing Isomap embedding")
     n_neighbors = 10
-    X_iso = manifold.Isomap(n_neighbors, n_components=2).fit_transform(
+    X_iso = manifold.Isomap(n_neighbors=n_neighbors, n_components=2).fit_transform(
         embeddings
         )
     plot_data_labelled(
