@@ -111,7 +111,7 @@ def generate_matches_array(labels):
     matching or non-matching labels.
     """
     N = len(labels)
-    matches = np.zeros(int(N*(N - 1)/2), dtype=np.bool)
+    matches = np.zeros(int(N*(N - 1)/2), dtype=np.bool_)
 
     # For every distance, mark whether it is a true match or not
     cur_matches_i = 0
@@ -132,7 +132,7 @@ def generate_type_matches_array(labels, target_type):
     pair involving `target_type`.
     """
     N = len(labels)
-    matches = np.zeros(int(N*(N - 1)/2), dtype=np.bool)
+    matches = np.zeros(int(N*(N - 1)/2), dtype=np.bool_)
 
     # For every distance, mark whether it is a true match or not
     cur_matches_i = 0
